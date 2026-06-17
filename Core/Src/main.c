@@ -50,6 +50,19 @@ UART_HandleTypeDef huart2;
 CAN_TxHeaderTypeDef TxHeader;
 uint32_t TxMailbox;
 uint8_t TxData[8];
+
+uint32_t speed_table[] = {50, 100, 300, 500};
+
+uint8_t speed_index = 0;
+
+uint32_t interval = 50;
+
+uint32_t last_time = 0;
+
+GPIO_PinState last_button = GPIO_PIN_SET;
+
+uint8_t current_target = 0;
+
 /* USER CODE END PV */
 /* USER CODE END PV */
 
@@ -101,17 +114,26 @@ int main(void)
   /* USER CODE BEGIN 2 */
   /* USER CODE BEGIN 2 */
 
+  /* USER CODE BEGIN 2 */
+
   if (HAL_CAN_Start(&hcan1) != HAL_OK)
   {
       Error_Handler();
   }
 
+  /* Initial state: STM1 LED ON */
+  HAL_GPIO_WritePin(LD2_GPIO_Port,
+                    LD2_Pin,
+                    GPIO_PIN_SET);
+
   TxHeader.StdId = 0x101;
   TxHeader.ExtId = 0x00;
   TxHeader.IDE = CAN_ID_STD;
   TxHeader.RTR = CAN_RTR_DATA;
-  TxHeader.DLC = 8;
+  TxHeader.DLC = 1;
   TxHeader.TransmitGlobalTime = DISABLE;
+
+  /* USER CODE END 2 */
 
   /* USER CODE END 2 */
   /* USER CODE END 2 */
@@ -120,36 +142,87 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
-	  if (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_RESET)
-	  {
-	      TxData[0] = 1;
-	  }
-	  else
-	  {
-	      TxData[0] = 0;
-	  }
+      GPIO_PinState current_button;
 
-	  /* Remaining bytes unused */
-	  TxData[1] = 0;
-	  TxData[2] = 0;
-	  TxData[3] = 0;
-	  TxData[4] = 0;
-	  TxData[5] = 0;
-	  TxData[6] = 0;
-	  TxData[7] = 0;
+      current_button = HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin);
 
-	  HAL_CAN_AddTxMessage(&hcan1,
-	                       &TxHeader,
-	                       TxData,
-	                       &TxMailbox);
+      /* Button pressed */
+      if ((current_button == GPIO_PIN_RESET) &&
+          (last_button == GPIO_PIN_SET))
+      {
+          HAL_Delay(20);
 
-	  HAL_Delay(50);
-    /* USER CODE BEGIN 3 */
-  }
-  /* USER CODE END 3 */
-}
+          if (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_RESET)
+          {
+              speed_index++;
 
+              if (speed_index >= 4)
+              {
+                  speed_index = 0;
+              }
+
+              interval = speed_table[speed_index];
+
+              /* Wait for release */
+              while (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_RESET)
+              {
+              }
+
+              HAL_Delay(20);
+          }
+      }
+
+      last_button = current_button;
+
+      /* Automatic LED sequence */
+      if ((HAL_GetTick() - last_time) >= interval)
+      {
+          last_time = HAL_GetTick();
+
+          current_target++;
+
+          if (current_target > 2)
+          {
+              current_target = 0;
+          }
+
+          /* STM2 */
+          TxHeader.StdId = 0x101;
+          TxData[0] = (current_target == 1) ? 1 : 0;
+
+          if (HAL_CAN_AddTxMessage(&hcan1,
+                                   &TxHeader,
+                                   TxData,
+                                   &TxMailbox) != HAL_OK)
+          {
+              Error_Handler();
+          }
+
+          while (HAL_CAN_IsTxMessagePending(&hcan1, TxMailbox));
+
+          /* STM3 */
+          TxHeader.StdId = 0x102;
+          TxData[0] = (current_target == 2) ? 1 : 0;
+
+          if (HAL_CAN_AddTxMessage(&hcan1,
+                                   &TxHeader,
+                                   TxData,
+                                   &TxMailbox) != HAL_OK)
+          {
+              Error_Handler();
+          }
+
+          while (HAL_CAN_IsTxMessagePending(&hcan1, TxMailbox));
+
+          /* STM1 */
+          HAL_GPIO_WritePin(LD2_GPIO_Port,
+                            LD2_Pin,
+                            (current_target == 0) ?
+                            GPIO_PIN_SET :
+                            GPIO_PIN_RESET);
+      }
+
+  }}
 /**
   * @brief System Clock Configuration
   * @retval None
