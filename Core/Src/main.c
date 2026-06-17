@@ -21,13 +21,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-//This is the change from main to version 1
-//This is the change from v1 to version2
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -46,7 +45,12 @@ CAN_HandleTypeDef hcan1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+/* USER CODE BEGIN PV */
 
+CAN_TxHeaderTypeDef TxHeader;
+uint32_t TxMailbox;
+uint8_t TxData[8];
+/* USER CODE END PV */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -60,11 +64,6 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-int _write(int file, char *ptr, int len)
-{
-    HAL_UART_Transmit(&huart2, (uint8_t *)ptr, len, HAL_MAX_DELAY);
-    return len;
-}
 
 /* USER CODE END 0 */
 
@@ -100,10 +99,12 @@ int main(void)
   MX_CAN1_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  CAN_TxHeaderTypeDef TxHeader;
-  uint8_t TxData[8];
-  uint32_t TxMailbox;
-  uint32_t counter = 0;
+  /* USER CODE BEGIN 2 */
+
+  if (HAL_CAN_Start(&hcan1) != HAL_OK)
+  {
+      Error_Handler();
+  }
 
   TxHeader.StdId = 0x101;
   TxHeader.ExtId = 0x00;
@@ -112,13 +113,7 @@ int main(void)
   TxHeader.DLC = 8;
   TxHeader.TransmitGlobalTime = DISABLE;
 
-  if (HAL_CAN_Start(&hcan1) != HAL_OK)
-  {
-      printf("Node 1: CAN start error\r\n");
-      Error_Handler();
-  }
-
-  printf("Node 1 transmitter started\r\n");
+  /* USER CODE END 2 */
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -126,58 +121,30 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  TxData[0] = counter & 0xFF;
-	 	    TxData[1] = (counter >> 8) & 0xFF;
-	 	    TxData[2] = (counter >> 16) & 0xFF;
-	 	    TxData[3] = (counter >> 24) & 0xFF;
-	 	    TxData[4] = 'C';
-	 	    TxData[5] = 'A';
-	 	    TxData[6] = 'N';
-	 	    TxData[7] = '!';
+	  if (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_RESET)
+	  {
+	      TxData[0] = 1;
+	  }
+	  else
+	  {
+	      TxData[0] = 0;
+	  }
 
-	 	    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+	  /* Remaining bytes unused */
+	  TxData[1] = 0;
+	  TxData[2] = 0;
+	  TxData[3] = 0;
+	  TxData[4] = 0;
+	  TxData[5] = 0;
+	  TxData[6] = 0;
+	  TxData[7] = 0;
 
-	 	    if (HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) > 0)
-	 	    {
-	 	        if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) == HAL_OK)
-	 	        {
-	 	            uint32_t startTick = HAL_GetTick();
+	  HAL_CAN_AddTxMessage(&hcan1,
+	                       &TxHeader,
+	                       TxData,
+	                       &TxMailbox);
 
-	 	            while (HAL_CAN_IsTxMessagePending(&hcan1, TxMailbox))
-	 	            {
-	 	                if ((HAL_GetTick() - startTick) > 100)
-	 	                {
-	 	                    break;
-	 	                }
-	 	            }
-
-	 	            if (!HAL_CAN_IsTxMessagePending(&hcan1, TxMailbox))
-	 	            {
-	 	                printf("Node 1 sent message ID=0x%03lX counter=%lu\r\n",
-	 	                       (unsigned long)TxHeader.StdId,
-	 	                       (unsigned long)counter);
-	 	            }
-	 	            else
-	 	            {
-	 	                HAL_CAN_AbortTxRequest(&hcan1, TxMailbox);
-	 	                printf("Node 1 message not ACKed. Check Node 2, wiring, bitrate.\r\n");
-	 	            }
-	 	        }
-	 	        else
-	 	        {
-	 	            printf("Node 1 CAN transmit error\r\n");
-	 	        }
-	 	    }
-	 	    else
-	 	    {
-	 	        printf("Node 1 no free CAN mailbox\r\n");
-	 	    }
-
-	 	    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-
-	 	    counter++;
-
-	 	    HAL_Delay(5000);
+	  HAL_Delay(50);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
